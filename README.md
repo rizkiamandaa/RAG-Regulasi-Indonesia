@@ -1,150 +1,142 @@
-# 🏛️ RAG Regulasi Indonesia
+# Indonesian Regulation Q&A (RAG)
 
-An AI-powered Q&A system for Indonesian government regulations. Users can ask questions in natural language and get answers grounded directly in official regulatory documents (laws, government regulations, ministerial decrees, etc.), complete with source citations.
+A question-answering assistant for Indonesian government regulations. It retrieves the relevant pages from
+regulation PDFs (including scanned ones) and asks Gemini to answer **only** from those pages, citing the
+document and page. If the documents do not contain the answer, it says so instead of guessing.
 
-> Note: the app interface is in Bahasa Indonesia by design, since the end users (people looking up Indonesian regulations) are Indonesian speakers. This documentation is in English for a broader technical audience.
+The interface is in English. The regulations, the questions and the answers are in Indonesian, because that is
+the language of the documents and of the people who need them.
 
-## Why this project
+## Results
 
-Indonesian government regulations are typically long PDF documents that are hard to search through quickly. This project builds a **RAG (Retrieval-Augmented Generation)** pipeline that enables semantic search over document content, then generates natural answers grounded in the retrieved context — rather than generic answers from the LLM's general knowledge.
+Evaluated on a hand-checked set of 30 answerable questions (retrieval) and 40 questions in total (answer behaviour).
+The corpus is 5 regulation PDFs, 215 pages. Each row of the table changes one thing.
 
-## Demo
+### Retrieval: is the right page in the top 3?
 
-![demo interface](docs_assets/demo.png)
+| Version | Change | Hit@1 | Hit@3 | Precision@3 | MRR |
+| ------- | ------ | ----- | ----- | ----------- | --- |
+| v1_baseline | `paraphrase-multilingual-MiniLM`, page-level chunks, one PDF indexed twice | 12/30 (0.400) | 17/30 (0.567) | 0.211 | 0.472 |
+| v2_dedupe | removed the duplicate PDF | 12/30 (0.400) | 17/30 (0.567) | 0.189 | 0.472 |
+| **v3_embedding** | **`multilingual-e5-small`** (retrieval-trained), exact vector search | **TBD** | **TBD** | **TBD** | **TBD** |
 
-## Architecture
+- Removing the duplicate changed no rank metric (the same 13 questions missed), so duplicates were a hygiene problem,
+  not the cause of the weak retrieval. Swapping the embedding model took Hit@3 from 17 to TBD questions.
+- Per-document results and the remaining misses are in `results/eval_v3_embedding.csv`. The question that depends on the
+  scanned appendix table stays a miss: Tesseract dropped the numbers, so the answer is not in the index.
+- v1 and v2 were measured with Chroma's default approximate search; v3 uses exact search (see Design notes).
+
+### Answer behaviour: answers when it should, refuses when it should (v1 pipeline)
+
+30 answerable and 10 unanswerable questions (5 related to the domain, 5 unrelated), Gemini 2.5 Flash.
+
+|  | System refuses | System answers |
+| --- | --- | --- |
+| **Should refuse** | 9 | 1 |
+| **Should answer** | 10 | 20 |
+
+Accuracy 0.725, refusal precision 0.474, refusal recall 0.900, F1 0.621. **Hallucination rate 0.10** (1 of 10):
+the other 9 unanswerable questions were refused, including trivia such as the capital of France. **False refusal rate 0.33**
+(10 of 30), and all 10 false refusals are retrieval misses: the model refused only when the right page was not
+retrieved, and it answered every question whose page was retrieved. This was measured before the embedding change, so
+the false refusal rate is expected to drop; it has not been re-measured (see Limitations).
+
+### Targets (set after the v1 baseline, before any change)
+
+| Target | Result | Status |
+| ------ | ------ | ------ |
+| Hit@3 ≥ 0.80 | TBD (v3) | TBD |
+| MRR ≥ 0.60 | TBD (v3) | TBD |
+| Hallucination rate ≤ 0.10 | 0.100 (v1) | met on the boundary |
+| False refusal rate ≤ 0.10 | 0.333 (v1) | not re-measured on v3 |
+
+## How the evaluation works
+
+| Metric | Meaning |
+| ------ | ------- |
+| Hit@1 | the top retrieved chunk contains the expected passage (like accuracy) |
+| Hit@3 | the expected passage is among the top 3 chunks (like recall; one correct passage per question) |
+| Precision@3 | share of the 3 chunks that contain it (about 0.33 at best with one correct chunk) |
+| MRR | mean of 1/rank of the first correct chunk |
+| Refusal confusion matrix | positive class = "should refuse"; gives accuracy, precision, recall, F1, hallucination and false refusal rates |
+
+A chunk counts as correct when a distinctive phrase from the source passage (a number, a duration, a term) appears in
+it. `eval_set.csv` holds the questions: 28 text questions, 2 that depend on scanned appendix pages, and 10 that the
+documents cannot answer.
 
 ```
-Regulation PDFs (docs/)
-      │
-      ▼
-┌─────────────────────┐
-│  Text quality check  │  → detect whether extracted text is readable or garbled
-└─────────────────────┘
-      │
-   ┌──┴──┐
-   │     │
-native   scanned
- text    PDF
-   │        │
-   │        ▼
-   │   OCR (Tesseract)
-   │        │
-   └────┬───┘
-        ▼
-┌─────────────────────┐
-│ Chunking & Embedding │  → HuggingFace multilingual-MiniLM
-└─────────────────────┘
-        ▼
-┌─────────────────────┐
-│   ChromaDB (vector)  │  → persistent local storage
-└─────────────────────┘
-        ▼
-   User query
-        │
-        ▼
-┌─────────────────────┐
-│  Similarity Search   │  → retrieve top-3 most relevant chunks
-└─────────────────────┘
-        ▼
-┌─────────────────────┐
-│   Gemini Flash API   │  → generate answer from retrieved context
-└─────────────────────┘
-        ▼
-   Answer + sources
+python evaluate.py v3_embedding             # retrieval metrics, no API calls
+python evaluate.py v3_embedding --answers   # answer vs refuse, calls Gemini (resumable)
+```
+Results go to `results/` (`summary.csv`, `summary_answers.csv` and one CSV per run).
+
+## How it works
+
+```
+docs/*.pdf -> read page by page -> pages with no/garbled text go through OCR (Tesseract) -> one chunk per page
+           -> multilingual-e5-small embeddings -> ChromaDB (rebuilt automatically when PDFs or model change)
+question  -> top-3 pages -> prompt "answer only from these pages, otherwise refuse" -> Gemini -> answer + sources
 ```
 
-## Tech stack & rationale
+Design notes:
+- **OCR per page, not per file.** A PDF with native-text pages plus a scanned appendix would otherwise lose the appendix.
+- **The index fingerprints its inputs** (PDF hashes and the embedding model name), so changing either rebuilds it. The
+  evaluation script refuses to run against an index built with a different model.
+- **Exact vector search.** Chroma's default approximate search (HNSW, `search_ef=10`) can miss true nearest neighbours.
+  Two builds of the same index scored 27/30 and 26/30 Hit@3 under it (approximate search is the suspected cause), so the
+  index is now created with `search_ef` above the chunk count, which makes search effectively exact and the metrics
+  reproducible.
+- **Rate limits.** The Gemini caller separates per-minute limits (retry) from daily quota and key errors (stop at once),
+  and the evaluation resumes where it stopped.
 
-| Component | Choice | Reason |
-|---|---|---|
-| RAG orchestration | LlamaIndex | Ready-made abstractions for chunking, indexing, retrieval |
-| Vector store | ChromaDB | Lightweight, local persistent storage, no separate server needed |
-| Embedding model | `paraphrase-multilingual-MiniLM-L12-v2` | Supports Bahasa Indonesia, lightweight enough for CPU |
-| LLM | Gemini Flash (REST API) | Free tier sufficient for low volume, fast response for QA |
-| OCR | Tesseract + Poppler | Many official regulation PDFs are scanned images, not native text |
-| Interface | Streamlit | Fast to prototype data/AI applications |
+## Setup
 
-## Technical challenges & solutions
-
-This section is written in detail because the debugging process was the most valuable part of building this project.
-
-### 1. Some regulation PDFs are scanned images, not native text
-
-Initial text extraction produced random characters (`♦☻♂↨`, etc.) for several documents. Investigation showed these documents were actually scanned images embedded in the PDF structure (`CCITTFaxDecode`, etc.), not text that could be extracted directly.
-
-**Solution:** the system automatically detects the ratio of "normal-looking words" in the extracted text. If the ratio is too low, the document is reprocessed through Tesseract OCR (converted to per-page images via Poppler, then OCR'd with Indonesian language support).
-
-### 2. Slow loading on every app restart
-
-`VectorStoreIndex.from_documents()` always reprocesses all documents from scratch, even though ChromaDB already has persisted data from a previous run.
-
-**Solution:** check `collection.count()` first to decide whether to build the index from scratch or simply load the existing index (`from_vector_store`).
-
-### 3. Dependency version conflicts (`torch`, `transformers`, `sentence-transformers`)
-
-Upgrading one library triggered `ModuleNotFoundError` in another due to incompatible versions — including a missing `torchvision` dependency that wasn't installed.
-
-**Solution:** pinned specific versions in `requirements.txt` that are confirmed to work together.
-
-### 4. Gemini API isn't always stable (503/timeout errors)
-
-**Solution:** automatic retry with backoff (2s, 4s, ...) up to 3 attempts, with a graceful fallback message to the user if all attempts fail.
-
-## Getting started
-
-### 1. Clone & install dependencies
-
-```bash
-git clone <repo-url>
-cd rag-regulasi-indonesia
+```
+git clone https://github.com/rizkiamandaa/RAG-Regulasi-Indonesia.git
+cd RAG-Regulasi-Indonesia
 pip install -r requirements.txt
 ```
 
-### 2. Install OCR engine (Windows)
+1. **OCR tools.** Install [Tesseract](https://github.com/UB-Mannheim/tesseract/wiki) with the Indonesian language data
+   (`ind.traineddata`) and [Poppler](https://github.com/oschwartz10612/poppler-windows/releases) (Windows), or
+   `brew install tesseract tesseract-lang poppler` (macOS), or
+   `sudo apt install tesseract-ocr tesseract-ocr-ind poppler-utils` (Debian/Ubuntu).
+2. **Configuration.** Copy `.env.example` to `.env` and fill it in. Get a Gemini key at
+   [Google AI Studio](https://aistudio.google.com/apikey). On Windows set `TESSERACT_PATH` (to `tesseract.exe`) and
+   `POPPLER_PATH` (to the folder containing `pdftoppm.exe`). Never commit `.env`.
+3. **Documents.** Put the regulation PDFs in `docs/`.
+4. **Run.** `python -m streamlit run app.py`. The first run builds the index (slow when pages need OCR and the embedding
+   model has to be downloaded); later runs start immediately.
 
-- **Tesseract OCR**: download from [github.com/UB-Mannheim/tesseract/wiki](https://github.com/UB-Mannheim/tesseract/wiki), install it, then download [`ind.traineddata`](https://github.com/tesseract-ocr/tessdata/raw/main/ind.traineddata) and place it in Tesseract's `tessdata` folder.
-- **Poppler**: download from [github.com/oschwartz10612/poppler-windows/releases](https://github.com/oschwartz10612/poppler-windows/releases), extract to a fixed location.
-- Update the Tesseract and Poppler paths at the top of `app.py` to match your installation.
-
-### 3. Set up your API key
-
-Create a `.env` file:
-```
-GEMINI_API_KEY=your_api_key_here
-```
-
-Get your API key from [Google AI Studio](https://aistudio.google.com/apikey).
-
-### 4. Add your documents
-
-Place regulation PDF files in the `docs/` folder. The system supports both native-text and scanned PDFs.
-
-### 5. Run
-
-```bash
-streamlit run app.py
-```
-
-## Project structure
+## Repository
 
 ```
-rag-regulasi-indonesia/
-├── app.py              # Main application
-├── requirements.txt    # Python dependencies
-├── .env                # API key (not committed)
-├── docs/               # Regulation PDF documents
-└── chroma_db/          # Vector store (auto-generated, not committed)
+app.py          Streamlit UI
+rag_core.py     reading PDFs and OCR, index, prompt, Gemini calls
+evaluate.py     retrieval and answer-behaviour evaluation
+eval_set.csv    the 40 evaluation questions
+results/        one CSV per evaluated version, plus summaries
+docs/           regulation PDFs
 ```
 
-## Current limitations
+## Limitations
 
-- Document coverage is limited to regulations collected manually
-- OCR significantly increases initial processing time for scanned documents
-- No automatic re-indexing mechanism when new documents are added without restarting the app
+- **Small test set.** 30 answerable questions: one question moves Hit@3 by 0.033. Counts are reported next to ratios.
+- **In-sample.** The questions were drafted with AI assistance and checked against the PDFs by the author. Changes were
+  chosen after seeing the baseline failures on this same set (only one alternative embedding model was tried), and there
+  is no held-out set. Two of the five documents have no questions and act as distractors.
+- **The model swap changed two things at once:** the training objective (retrieval vs sentence similarity) and the
+  context window (512 vs, as far as I know, 128 tokens). The data cannot separate them.
+- **Answer behaviour was measured on the v1 pipeline only.** The free Gemini quota allowed roughly 20 calls per day, so a
+  full run (40 calls) takes two days. Re-measure with `--answers` to get the current numbers.
+- **Answer correctness and faithfulness were only spot-checked**, not measured systematically.
+- **One unanswerable question may be answerable:** "police emergency number" is covered by the 112 regulation
+  (public-order emergencies), so the 0.10 hallucination rate may be overstated.
+- **Scanned tables.** Tesseract with default settings dropped numeric cells in a scanned appendix table. A binarized
+  image recovered 4 of 6 values in a manual test; this is not in the pipeline.
+- The stamped signature date and Berita Negara number of Permen 9/2026 are image overlays and are not searchable.
 
-## Potential improvements
+## Possible next steps
 
-- Automated document sourcing via scraping official JDIH (legal documentation) websites
-- Re-ranking retrieval results for higher accuracy
-- RAG evaluation metrics to measure answer quality
+Hold out 10 new questions written from the two unquestioned documents, add image preprocessing for scanned tables,
+test smaller chunks or article-aware chunking, and re-run the answer-behaviour evaluation on the current pipeline.
