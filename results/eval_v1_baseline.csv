@@ -1,0 +1,31 @@
+source,question,rank,n_relevant_top3,top1,hit1,hit,rr,prec
+Permen Komdigi 9/2026,"Berapa usia paling rendah Anak yang dapat menggunakan Produk, Layanan, dan Fitur menurut Pasal 2?",0,0,Permenkomdigi-no-9-tahun-2026.pdf hlm.15,False,False,0.0,0.0
+Permen Komdigi 9/2026,Apa rentang usia Anak yang paling tua dalam pengelompokan rentang usia pada Pasal 2 ayat (3)?,0,0,PERMEN-no-9-tahun-2026.pdf hlm.6,False,False,0.0,0.0
+Permen Komdigi 9/2026,Kapan dokumentasi hasil penilaian mandiri harus sudah disahkan oleh Penyelenggara Sistem Elektronik?,2,1,PERMEN-no-9-tahun-2026.pdf hlm.25,False,True,0.5,0.3333333333333333
+Permen Komdigi 9/2026,"Apa saja aspek yang dinilai dalam penilaian tingkat risiko Produk, Layanan, dan Fitur terhadap Anak?",0,0,Permenkomdigi-no-9-tahun-2026.pdf hlm.7,False,False,0.0,0.0
+Permen Komdigi 9/2026,Pejabat apa yang harus ditunjuk Penyelenggara Sistem Elektronik saat melaporkan hasil penilaian mandiri?,0,0,PP Nomor 71 Tahun 2019.pdf hlm.25,False,False,0.0,0.0
+Permen Komdigi 9/2026,Anak berusia berapa yang hanya boleh memiliki akun pada layanan yang dirancang khusus untuk Anak dan berprofil risiko rendah?,0,0,Permenkomdigi-no-9-tahun-2026.pdf hlm.15,False,False,0.0,0.0
+Permen Komdigi 9/2026,Apa kewajiban penyelenggara media sosial berprofil risiko tinggi terhadap akun Anak di bawah 16 tahun?,1,2,Permenkomdigi-no-9-tahun-2026.pdf hlm.15,True,True,1.0,0.6666666666666666
+Permen Komdigi 9/2026,Paling lama berapa hari Direktorat Jenderal melakukan pemeriksaan pendahuluan sejak laporan atau aduan diterima?,0,0,PERBAN Nomor 8 Tahun 2020.pdf hlm.18,False,False,0.0,0.0
+Permen Komdigi 9/2026,Berapa jumlah minimal Anak yang terdampak sebagai pertimbangan menentukan jangka waktu pemeriksaan pendahuluan?,0,0,PERMEN-no-9-tahun-2026.pdf hlm.11,False,False,0.0,0.0
+Permen Komdigi 9/2026,Berapa kali pemanggilan dilakukan terhadap Penyelenggara Sistem Elektronik yang diduga melanggar kewajiban pelindungan Anak?,0,0,Permenkomdigi-no-9-tahun-2026.pdf hlm.17,False,False,0.0,0.0
+Permen Komdigi 9/2026,Apa akibatnya jika Direktur Jenderal atau Menteri tidak menyelesaikan Keberatan dalam jangka waktu yang ditentukan?,2,2,PERMEN-no-9-tahun-2026.pdf hlm.28,False,True,0.5,0.6666666666666666
+Permenkominfo 10/2016,Nomor berapa yang harus digunakan untuk Layanan Nomor Tunggal Panggilan Darurat?,1,1,Peraturan Menteri Komunikasi dan Informatika Nomor 10 Tahun 2016.pdf hlm.5,True,True,1.0,0.3333333333333333
+Permenkominfo 10/2016,Siapa yang melaksanakan Layanan Nomor Tunggal Panggilan Darurat di tingkat nasional?,1,1,Peraturan Menteri Komunikasi dan Informatika Nomor 10 Tahun 2016.pdf hlm.6,True,True,1.0,0.3333333333333333
+Permenkominfo 10/2016,Siapa yang melaksanakan Layanan Nomor Tunggal Panggilan Darurat untuk Daerah Khusus Ibukota Jakarta?,1,1,Peraturan Menteri Komunikasi dan Informatika Nomor 10 Tahun 2016.pdf hlm.7,True,True,1.0,0.3333333333333333
+Permenkominfo 10/2016,Apakah masyarakat dikenakan biaya saat melakukan panggilan keadaan darurat ke Pusat Panggilan Darurat?,0,0,Peraturan Menteri Komunikasi dan Informatika Nomor 10 Tahun 2016.pdf hlm.5,False,False,0.0,0.0
+Permenkominfo 10/2016,Berapa lama paling lama mekanisme sewa infrastruktur Pusat Panggilan Darurat dilakukan?,1,1,Peraturan Menteri Komunikasi dan Informatika Nomor 10 Tahun 2016.pdf hlm.11,True,True,1.0,0.3333333333333333
+Permenkominfo 10/2016,Berapa jam sehari Sistem Pusat Panggilan Darurat beroperasi?,3,1,Peraturan Menteri Komunikasi dan Informatika Nomor 10 Tahun 2016.pdf hlm.5,False,True,0.3333333333333333,0.3333333333333333
+Permenkominfo 10/2016,Apa larangan bagi setiap orang yang melakukan panggilan ke Pusat Panggilan Darurat?,1,1,Peraturan Menteri Komunikasi dan Informatika Nomor 10 Tahun 2016.pdf hlm.12,True,True,1.0,0.3333333333333333
+Permenkominfo 10/2016,Paling lambat berapa lama Penyelenggara Jaringan Telekomunikasi wajib melaporkan usulan penambahan kapasitas jaringan kepada Direktur Jenderal?,1,1,Peraturan Menteri Komunikasi dan Informatika Nomor 10 Tahun 2016.pdf hlm.10,True,True,1.0,0.3333333333333333
+Perban BSSN 8/2020,"Berdasarkan asas Risiko, Sistem Elektronik dikategorikan menjadi apa saja?",1,1,PERBAN Nomor 8 Tahun 2020.pdf hlm.7,True,True,1.0,0.3333333333333333
+Perban BSSN 8/2020,Paling lama berapa hari kerja verifikasi hasil Penilaian Mandiri dilakukan sejak laporan diterima?,0,0,PERBAN Nomor 8 Tahun 2020.pdf hlm.18,False,False,0.0,0.0
+Perban BSSN 8/2020,Alat evaluasi apa yang dapat dipakai untuk mempersiapkan penerapan SNI ISO/IEC 27001?,1,1,PERBAN Nomor 8 Tahun 2020.pdf hlm.9,True,True,1.0,0.3333333333333333
+Perban BSSN 8/2020,Kapan Penyelenggara Sistem Elektronik harus mengajukan permohonan jika ingin menggunakan Tenaga Ahli asing?,0,0,PP Nomor 71 Tahun 2019.pdf hlm.31,False,False,0.0,0.0
+Perban BSSN 8/2020,Lembaga konsultan SMPI harus berbentuk apa?,0,0,PERBAN Nomor 8 Tahun 2020.pdf hlm.12,False,False,0.0,0.0
+Perban BSSN 8/2020,Berapa lama masa berlaku Sertifikat SMPI?,2,1,PERBAN Nomor 8 Tahun 2020.pdf hlm.13,False,True,0.5,0.3333333333333333
+Perban BSSN 8/2020,Paling lambat kapan Sertifikat SMPI harus diperbaharui oleh Penyelenggara Sistem Elektronik?,3,1,PERBAN Nomor 8 Tahun 2020.pdf hlm.17,False,True,0.3333333333333333,0.3333333333333333
+Perban BSSN 8/2020,Berapa kali dalam setahun Lembaga Sertifikasi wajib menyampaikan laporan hasil sertifikasi SMPI kepada Kepala BSSN?,1,1,PERBAN Nomor 8 Tahun 2020.pdf hlm.17,True,True,1.0,0.3333333333333333
+Perban BSSN 8/2020,Berapa lama waktu yang diberikan untuk memenuhi standar jika hasil audit pengawasan tidak memenuhi standar?,1,1,PERBAN Nomor 8 Tahun 2020.pdf hlm.18,True,True,1.0,0.3333333333333333
+"Perban BSSN 8/2020 (Lampiran, butuh OCR)",Berapa rentang total bobot nilai untuk kategori Sistem Elektronik strategis dalam format penilaian mandiri?,0,0,PERBAN Nomor 8 Tahun 2020.pdf hlm.7,False,False,0.0,0.0
+"Perban BSSN 8/2020 (Lampiran, butuh OCR)","Dalam format penilaian mandiri kategorisasi, nilai investasi sistem elektronik seperti apa yang masuk opsi A?",1,1,PERBAN Nomor 8 Tahun 2020.pdf hlm.23,True,True,1.0,0.3333333333333333

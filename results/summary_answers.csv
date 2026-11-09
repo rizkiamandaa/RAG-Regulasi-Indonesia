@@ -1,0 +1,4 @@
+tag,date,model,tp,fn,fp,tn,accuracy,precision,recall,f1,false_refusal_rate,hallucination_rate
+v1_baseline,2026-11-04,gemini-2.5-flash,9,1,10,20,0.725,0.474,0.9,0.621,0.333,0.1
+v1_baseline,2026-11-04,gemini-2.5-flash,9,1,10,20,0.725,0.474,0.9,0.621,0.333,0.1
+v1_baseline,2026-11-04,gemini-2.5-flash,9,1,10,20,0.725,0.474,0.9,0.621,0.333,0.1

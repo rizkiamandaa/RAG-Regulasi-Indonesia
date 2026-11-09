@@ -1,0 +1,5 @@
+tag,date,n_questions,n_docs,n_chunks,hit_at_1,hit_at_3,precision_at_3,mrr,ocr_questions_hit,embed_model
+v1_baseline,02/11/2026,30,6,244,0.4,0.567,0.211,0.472,01-Feb,
+v2_dedupe,04/11/2026,30,5,215,0.4,0.567,0.189,0.472,01-Feb,
+v2_exact,09/11/2026,30,5,215,0.4,0.567,0.189,0.472,01-Feb,paraphrase-multilingual-MiniLM-L12-v2
+v3_embedding,09/11/2026,30,5,215,0.633,0.9,0.3,0.739,01-Feb,intfloat/multilingual-e5-small
