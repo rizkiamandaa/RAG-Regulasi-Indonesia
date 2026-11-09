@@ -1,269 +1,144 @@
-import torch.nn as nn
 import sys
-sys.modules['nn'] = nn
+import torch.nn as nn
 
+sys.modules["nn"] = nn
+
+import html
 import os
-import time
-import requests
 import streamlit as st
-from dotenv import load_dotenv
-from llama_index.core import (
-    VectorStoreIndex,
-    SimpleDirectoryReader,
-    StorageContext,
-    Document,
-)
-from llama_index.vector_stores.chroma import ChromaVectorStore
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.core import Settings
-import chromadb
-import pytesseract
-from pdf2image import convert_from_path
+import rag_core
 
-# ── OCR Configuration ────────────────────────────────────
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-POPPLER_PATH = r"C:\Program Files\Release-26.02.0-0\poppler-26.02.0\Library\bin"
+# The questions are Indonesian because the documents and the users are Indonesian.
+EXAMPLE_QUESTIONS = [
+    "Nomor berapa yang digunakan untuk layanan panggilan darurat?",
+    "Berapa lama masa berlaku Sertifikat SMPI?",
+    "Anak umur berapa yang akunnya harus dinonaktifkan di media sosial?",
+    "Berapa jam sehari Sistem Pusat Panggilan Darurat beroperasi?",
+]
 
-load_dotenv()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+CARD_CSS = """
+<style>
+.source-card {
+    background-color: rgba(120, 120, 120, 0.08);
+    border-left: 3px solid #4a90d9;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+}
+.source-card-ocr { border-left: 3px solid #d9a14a; }
+.relevance-badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background-color: rgba(74, 144, 217, 0.15);
+    margin-left: 6px;
+}
+</style>
+"""
 
-# ── Use local embedding — no API key needed ──────
-Settings.embed_model = HuggingFaceEmbedding(
-    model_name="paraphrase-multilingual-MiniLM-L12-v2"
-)
-# Turn off LLM default LlamaIndex
-Settings.llm = None
-
-
-# ── Detect whether the PDF text is from a scan or original ──
-def is_text_garbage(text: str) -> bool:
-    """Cek apakah teks hasil extract terlihat seperti garbage/scan."""
-    if len(text.strip()) == 0:
-        return True
-    words = text.split()
-    if len(words) == 0:
-        return True
-    readable_words = [
-        w for w in words
-        if len(w) > 0 and sum(c.isalpha() for c in w) / len(w) > 0.6
-    ]
-    ratio = len(readable_words) / len(words)
-    return ratio < 0.4  # kurang dari 40% kata yang "terlihat normal" → garbage
+@st.cache_resource(show_spinner="Loading the regulations (scanned pages are OCR'd on the first run, please wait)...")
+def get_index():
+    return rag_core.build_or_load_index()
 
 
-def ocr_pdf(filepath: str) -> str:
-    """Ekstrak teks dari PDF hasil scan menggunakan OCR."""
-    pages = convert_from_path(filepath, poppler_path=POPPLER_PATH)
-    full_text = []
-    for page in pages:
-        text = pytesseract.image_to_string(page, lang="ind")
-        full_text.append(text)
-    return "\n\n".join(full_text)
-
-
-def load_documents_with_ocr_fallback(docs_folder: str):
-    """Load semua PDF; kalau terdeteksi scan, proses ulang pakai OCR."""
-    docs = SimpleDirectoryReader(docs_folder).load_data()
-
-    # First, group by filename (a single file can be split into multiple documents / pages)
-    by_file = {}
-    for d in docs:
-        fname = d.metadata.get("file_name", "unknown")
-        by_file.setdefault(fname, []).append(d)
-
-    final_docs = []
-    for fname, parts in by_file.items():
-        combined_text = "\n".join(p.text for p in parts)
-
-        if is_text_garbage(combined_text):
-            filepath = os.path.join(docs_folder, fname)
-            ocr_text = ocr_pdf(filepath)
-            final_docs.append(
-                Document(text=ocr_text, metadata={"file_name": fname, "ocr": True})
-            )
-        else:
-            for p in parts:
-                final_docs.append(p)
-
-    return final_docs
-
-
-# ── Gemini via REST API, with automation retry ────────
-def ask_gemini(prompt: str, max_retries: int = 3) -> str:
-    url = (
-        "https://generativelanguage.googleapis.com"
-        "/v1beta/models/gemini-flash-latest:generateContent"
-        f"?key={GEMINI_API_KEY}"
-    )
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-
-    last_error = None
-    for attempt in range(1, max_retries + 1):
-        try:
-            resp = requests.post(url, json=payload, timeout=60)
-            resp.raise_for_status()
-            return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except (requests.exceptions.Timeout, requests.exceptions.HTTPError) as e:
-            last_error = e
-            # 503/timeout = server is busy, Try again after a brief pause.
-            if attempt < max_retries:
-                time.sleep(2 * attempt)  # 2s, 4s, ...
-                continue
-            raise last_error
-
-
-# ── Load documents and create index (or load an existing index) ──
-@st.cache_resource(show_spinner="Memuat dokumen regulasi (PDF hasil scan akan di-OCR, mohon tunggu)...")
-def load_index():
-    db = chromadb.PersistentClient(path="./chroma_db")
-    col = db.get_or_create_collection("regulasi")
-    store = ChromaVectorStore(chroma_collection=col)
-    ctx = StorageContext.from_defaults(vector_store=store)
-
-    if col.count() > 0:
-        # The index has already been created—it loads directly and is not reprocessed
-        index = VectorStoreIndex.from_vector_store(
-            vector_store=store, storage_context=ctx
-        )
-    else:
-        # Initial run — process all PDFs, using OCR for scanned documents
-        docs = load_documents_with_ocr_fallback("docs")
-        index = VectorStoreIndex.from_documents(docs, storage_context=ctx)
-
-    return index, col.count()
-
-
-# ── Page config ────────────────────────────────────────
-st.set_page_config(
-    page_title="RAG Regulasi Indonesia",
-    page_icon="🏛️",
-    layout="centered",
-)
-
-# ── Custom styling ───────────────────────────────────────
-st.markdown(
-    """
-    <style>
-    .source-card {
-        background-color: rgba(120, 120, 120, 0.08);
-        border-left: 3px solid #4a90d9;
-        border-radius: 6px;
-        padding: 10px 14px;
-        margin-bottom: 10px;
+def source_from_node(node):
+    """Flatten a retrieved node into a plain dict (safe to keep in the chat history)."""
+    return {
+        "file": node.metadata.get("file_name", "Unknown"),
+        "page": node.metadata.get("page"),
+        "ocr": node.metadata.get("ocr", False),
+        "score": node.score or 0.0,
+        "text": node.text[:350] + "...",
     }
-    .source-card-ocr {
-        border-left: 3px solid #d9a14a;
-    }
-    .relevance-badge {
-        display: inline-block;
-        font-size: 0.75rem;
-        padding: 2px 8px;
-        border-radius: 10px;
-        background-color: rgba(74, 144, 217, 0.15);
-        margin-left: 6px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
 
-# ── Sidebar — document info ──────────────────────────────
-with st.sidebar:
-    st.markdown("### 🏛️ RAG Regulasi Indonesia")
-    st.caption("Tanya jawab regulasi Indonesia berbasis AI")
-    st.divider()
 
-    docs_folder = "docs"
-    if os.path.exists(docs_folder):
-        pdf_files = [f for f in os.listdir(docs_folder) if f.endswith(".pdf")]
-        st.markdown(f"**📄 Dokumen termuat:** {len(pdf_files)}")
-        with st.expander("Lihat daftar dokumen"):
-            for f in pdf_files:
-                st.write(f"- {f}")
-    else:
-        st.warning("Folder 'docs' tidak ditemukan")
-
-    st.divider()
-    st.markdown("**ℹ️ Cara kerja sistem**")
-    st.caption(
-        "Setiap dokumen otomatis dicek: jika teksnya tidak terbaca normal "
-        "(misal hasil scan), sistem akan menjalankan OCR sebelum diproses."
-    )
-
-    st.divider()
-    if st.button("🗑️ Hapus riwayat chat", use_container_width=True):
-        st.session_state.messages = []
-        st.rerun()
-
-    st.divider()
-    st.caption("Model: Gemini Flash · Embedding: multilingual-MiniLM · OCR: Tesseract")
-
-def render_sources(nodes_or_sources, is_node=True):
-    """Render daftar sumber dokumen dengan styling card."""
-    for i, item in enumerate(nodes_or_sources):
-        if is_node:
-            file_name = item.metadata.get("file_name", "Unknown")
-            is_ocr = item.metadata.get("ocr", False)
-            score = item.score
-            snippet = item.text[:350] + "..."
-        else:
-            file_name = item["file"]
-            is_ocr = item.get("ocr", False)
-            score = item["score"]
-            snippet = item["text"]
-
-        card_class = "source-card source-card-ocr" if is_ocr else "source-card"
-        ocr_label = " 🔍 *(hasil OCR)*" if is_ocr else ""
-
+def render_sources(sources):
+    """Show the retrieved pages as small cards."""
+    for i, source in enumerate(sources, start=1):
+        card_class = "source-card source-card-ocr" if source["ocr"] else "source-card"
+        page_label = f", p. {source['page']}" if source["page"] else ""
+        ocr_label = " 🔍 <i>(OCR)</i>" if source["ocr"] else ""
+        snippet = html.escape(" ".join(source["text"].split()))  # OCR text is full of blank lines
         st.markdown(
             f"""
             <div class="{card_class}">
-                <b>Sumber {i + 1}</b> — <i>{file_name}</i>{ocr_label}
-                <span class="relevance-badge">relevansi: {score:.3f}</span>
+                <b>Source {i}</b> — <i>{html.escape(str(source['file']))}</i>{page_label}{ocr_label}
+                <span class="relevance-badge">relevance: {source['score']:.3f}</span>
                 <p style="margin-top:8px; font-size:0.9rem; opacity:0.85;">{snippet}</p>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
+# --------------------------------------------------------------------------- #
+# Page setup
+# --------------------------------------------------------------------------- #
+st.set_page_config(page_title="Indonesian Regulation Q&A", page_icon="🏛️", layout="centered")
 
-# ── Inisialisasi index & session state ──────────────────
-index, n_chunks = load_index()
-retriever = index.as_retriever(similarity_top_k=3)
+if not rag_core.GEMINI_API_KEY:
+    st.error("GEMINI_API_KEY is not set. Copy `.env.example` to `.env` and fill it in.")
+    st.stop()
+
+st.markdown(CARD_CSS, unsafe_allow_html=True)
+
+with st.sidebar:
+    st.markdown("### 🏛️ Indonesian Regulation Q&A")
+    st.caption("Ask questions about Indonesian regulations, answered from the source documents.")
+    st.divider()
+
+    if os.path.exists(rag_core.DOCS_DIR):
+        pdf_files = [f for f in os.listdir(rag_core.DOCS_DIR) if f.lower().endswith(".pdf")]
+        st.markdown(f"**📄 Documents loaded:** {len(pdf_files)}")
+        with st.expander("Show document list"):
+            for name in pdf_files:
+                st.write(f"- {name}")
+    else:
+        st.warning(f"Folder '{rag_core.DOCS_DIR}' not found")
+
+    st.divider()
+    st.markdown("**ℹ️ How it works**")
+    st.caption(
+        "Every page is checked: if its text is empty or unreadable (for example a scan), "
+        "that page is run through OCR before indexing."
+    )
+    st.divider()
+    if st.button("🗑️ Clear chat history", use_container_width=True):
+        st.session_state.messages = []
+        st.rerun()
+    st.divider()
+    st.caption(
+        f"LLM: {rag_core.GEMINI_MODEL} · Embeddings: {rag_core.EMBED_MODEL.split('/')[-1]} · OCR: Tesseract"
+    )
+
+index, _collection = get_index()
+retriever = index.as_retriever(similarity_top_k=rag_core.TOP_K)
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# ── Header ───────────────────────────────────────────────
-st.title("🏛️ RAG Regulasi Indonesia")
-st.caption("Tanyakan apapun tentang regulasi yang sudah dimuat")
+st.title("🏛️ Indonesian Regulation Q&A")
+st.caption("Answers are grounded in the loaded documents and cite their source pages.")
 
-# ── Contoh pertanyaan (tampil hanya kalau belum ada chat) ──
+# --------------------------------------------------------------------------- #
+# Chat
+# --------------------------------------------------------------------------- #
 example_query = None
-if len(st.session_state.messages) == 0:
-    st.markdown("**💡 Contoh pertanyaan:**")
-    col1, col2 = st.columns(2)
-    examples = [
-        "Apa itu informasi elektronik?",
-        "Apa kewajiban penyelenggara sistem elektronik?",
-        "Apa sanksi melanggar UU ITE?",
-        "Apa itu tanda tangan elektronik?",
-    ]
-    for i, ex in enumerate(examples):
-        col = col1 if i % 2 == 0 else col2
-        if col.button(ex, use_container_width=True, key=f"example_{i}"):
-            example_query = ex
+if not st.session_state.messages:
+    st.markdown("**💡 Example questions:**")
+    columns = st.columns(2)
+    for i, example in enumerate(EXAMPLE_QUESTIONS):
+        if columns[i % 2].button(example, use_container_width=True, key=f"example_{i}"):
+            example_query = example
 
-# ── Tampilkan riwayat chat ───────────────────────────────
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-        if msg["role"] == "assistant" and "sources" in msg:
-            with st.expander("📚 Lihat sumber dokumen"):
-                render_sources(msg["sources"], is_node=False)
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        if message["role"] == "assistant" and "sources" in message:
+            with st.expander("📚 View sources"):
+                render_sources(message["sources"])
 
-# ── Input chat baru ──────────────────────────────────────
-query = st.chat_input("Tulis pertanyaan kamu di sini...") or example_query
+query = st.chat_input("Ask a question (Indonesian works best)...") or example_query
 
 if query:
     st.session_state.messages.append({"role": "user", "content": query})
@@ -271,42 +146,17 @@ if query:
         st.markdown(query)
 
     with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban..."):
+        with st.spinner("Searching the documents..."):
             nodes = retriever.retrieve(query)
-            context = "\n\n".join([n.text for n in nodes])
-
-            prompt = f"""Berdasarkan dokumen berikut, jawab pertanyaan ini.
-
-Dokumen:
-{context}
-
-Pertanyaan: {query}
-
-Jawab dalam Bahasa Indonesia yang jelas dan informatif."""
-
-            try:
-                answer = ask_gemini(prompt)
-            except Exception:
-                answer = (
-                    "⚠️ Server Gemini sedang sibuk atau lambat merespons. "
-                    "Coba tanyakan lagi dalam beberapa saat."
-                )
+            # Interactive use: retry briefly rather than wait minutes for a rate limit to clear.
+            answer, ok = rag_core.call_gemini(rag_core.build_prompt(query, nodes), max_attempts=3, retry_wait=2)
+            if not ok:
+                print(f"Gemini call failed: {answer}", flush=True)  # reason goes to the terminal
+                answer = "⚠️ Gemini is busy or not responding. Please try again in a moment."
             st.markdown(answer)
 
-            sources = []
-            with st.expander("📚 Lihat sumber dokumen"):
-                render_sources(nodes, is_node=True)
-                for node in nodes:
-                    file_name = node.metadata.get("file_name", "Unknown")
-                    sources.append(
-                        {
-                            "file": file_name,
-                            "score": node.score,
-                            "text": node.text[:350] + "...",
-                            "ocr": node.metadata.get("ocr", False),
-                        }
-                    )
+            sources = [source_from_node(node) for node in nodes]
+            with st.expander("📚 View sources"):
+                render_sources(sources)
 
-    st.session_state.messages.append(
-        {"role": "assistant", "content": answer, "sources": sources}
-    )
+    st.session_state.messages.append({"role": "assistant", "content": answer, "sources": sources})
