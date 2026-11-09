@@ -1,6 +1,7 @@
 .env
+chroma_db/
+index_manifest.json
 __pycache__/
 *.pyc
-chroma_db/
-.streamlit/
-*.log
+.venv/
+venv/
